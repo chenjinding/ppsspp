@@ -310,6 +310,9 @@ static ConfigSetting generalSettings[] = {
 #endif
 	ConfigSetting("PauseWhenMinimized", &g_Config.bPauseWhenMinimized, false),
 	ConfigSetting("DumpDecryptedEboots", &g_Config.bDumpDecryptedEboot, false),
+
+	ReportedConfigSetting("LoadPlugins", &g_Config.bLoadPlugins, false),
+
 	ConfigSetting(false),
 };
 

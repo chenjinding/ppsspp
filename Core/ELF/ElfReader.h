@@ -19,7 +19,8 @@
 
 #include "Common/CommonTypes.h"
 
-#include "ElfTypes.h"
+#include "Core/Util/BlockAllocator.h"
+#include "Core/ELF/ElfTypes.h"
 
 enum {
 	R_MIPS_NONE,

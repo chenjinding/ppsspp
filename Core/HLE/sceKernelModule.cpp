@@ -27,6 +27,7 @@
 #include "Core/HLE/FunctionWrappers.h"
 #include "Core/HLE/HLETables.h"
 #include "Core/HLE/ReplaceTables.h"
+#include "Core/HLE/Plugins.h"
 #include "Core/Reporting.h"
 #include "Core/Host.h"
 #include "Core/MIPS/MIPS.h"
@@ -245,9 +246,8 @@ public:
 	static int GetStaticIDType() { return PPSSPP_KERNEL_TMID_Module; }
 	int GetIDType() const { return PPSSPP_KERNEL_TMID_Module; }
 
-	virtual void DoState(PointerWrap &p)
-	{
-		auto s = p.Section("Module", 1, 3);
+	virtual void DoState(PointerWrap &p) {
+		auto s = p.Section("Module", 1, 4);
 		if (!s)
 			return;
 
@@ -281,6 +281,12 @@ public:
 		VarSymbolImport vsi = {{0}};
 		p.Do(importedVars, vsi);
 		RebuildImpExpModuleNames();
+
+		if (s >= 4) {
+			p.Do(kernelMode);
+		} else {
+			kernelMode = false;
+		}
 
 		if (p.mode == p.MODE_READ) {
 			char moduleName[29] = {0};
@@ -374,6 +380,7 @@ public:
 	u32 memoryBlockAddr;
 	u32 memoryBlockSize;
 	bool isFake;
+	bool kernelMode;
 };
 
 KernelObject *__KernelModuleObject()
@@ -832,11 +839,12 @@ static bool IsHLEVersionedModule(const char *name) {
 	return false;
 }
 
-Module *__KernelLoadELFFromPtr(const u8 *ptr, u32 loadAddress, bool fromTop, std::string *error_string, u32 *magic, u32 &error) {
+Module *__KernelLoadELFFromPtr(const u8 *ptr, u32 loadAddress, bool fromTop, std::string *error_string, u32 *magic, bool kernelMode, u32 &error) {
 	Module *module = new Module;
 	kernelObjects.Create(module);
 	loadedModules.insert(module->GetUID());
 	memset(&module->nm, 0, sizeof(module->nm));
+	module->kernelMode = kernelMode;
 
 	bool reportedModule = false;
 	u32 devkitVersion = 0;
@@ -1381,7 +1389,7 @@ bool __KernelLoadPBP(const char *filename, std::string *error_string)
 	u8 *elfData = pbp.GetSubFile(PBP_EXECUTABLE_PSP, &elfSize);
 	u32 magic;
 	u32 error;
-	Module *module = __KernelLoadELFFromPtr(elfData, PSP_GetDefaultLoadAddress(), false, error_string, &magic, error);
+	Module *module = __KernelLoadELFFromPtr(elfData, PSP_GetDefaultLoadAddress(), false, error_string, &magic, false, error);
 	if (!module) {
 		delete [] elfData;
 		return false;
@@ -1389,6 +1397,27 @@ bool __KernelLoadPBP(const char *filename, std::string *error_string)
 	mipsr4k.pc = module->nm.entry_addr;
 	delete [] elfData;
 	return true;
+}
+
+SceUID __KernelLoadModule(const std::string &filename, bool kernelMode, std::string *error_string) {
+	PSPFileInfo info = pspFileSystem.GetFileInfo(filename);
+	if (!info.exists)
+		return SCE_KERNEL_ERROR_NOFILE;
+
+	Module *module = NULL;
+	u8 *temp = new u8[(size_t)info.size];
+
+	u32 handle = pspFileSystem.OpenFile(filename, FILEACCESS_READ);
+	pspFileSystem.ReadFile(handle, temp, (size_t)info.size);
+	pspFileSystem.CloseFile(handle);
+
+	u32 magic;
+	module = __KernelLoadELFFromPtr(temp, 0, error_string, &magic, kernelMode);
+	delete [] temp;
+
+	if (module == NULL)
+		return SCE_KERNEL_ERROR_ILLEGAL_OBJECT;
+	return module->GetUID();
 }
 
 Module *__KernelLoadModule(u8 *fileptr, SceKernelLMOption *options, std::string *error_string)
@@ -1421,7 +1450,7 @@ Module *__KernelLoadModule(u8 *fileptr, SceKernelLMOption *options, std::string 
 		}
 
 		u32 error;
-		module = __KernelLoadELFFromPtr(temp ? temp : fileptr + offsets[5], PSP_GetDefaultLoadAddress(), false, error_string, &magic, error);
+		module = __KernelLoadELFFromPtr(temp ? temp : fileptr + offsets[5], PSP_GetDefaultLoadAddress(), false, error_string, &magic, false, error);
 
 		if (temp) {
 			delete [] temp;
@@ -1431,7 +1460,7 @@ Module *__KernelLoadModule(u8 *fileptr, SceKernelLMOption *options, std::string 
 	{
 		u32 error;
 		u32 magic = 0;
-		module = __KernelLoadELFFromPtr(fileptr, PSP_GetDefaultLoadAddress(), false, error_string, &magic, error);
+		module = __KernelLoadELFFromPtr(fileptr, PSP_GetDefaultLoadAddress(), false, error_string, &magic, false, error);
 	}
 
 	return module;
@@ -1450,6 +1479,9 @@ void __KernelStartModule(Module *m, int args, const char *argp, SceKernelSMOptio
 
 	SceUID threadID = __KernelSetupRootThread(m->GetUID(), args, argp, options->priority, options->stacksize, options->attribute);
 	__KernelSetThreadRA(threadID, NID_MODULERETURN);
+
+	if (g_Config.bLoadPlugins)
+		HLEPlugins::Init();
 }
 
 
@@ -1642,6 +1674,7 @@ u32 sceKernelLoadModule(const char *name, u32 flags, u32 optionAddr)
 			loadedModules.insert(module->GetUID());
 			memset(&module->nm, 0, sizeof(module->nm));
 			module->isFake = true;
+			module->kernelMode = false;
 			return module->GetUID();
 		}
 	}
@@ -1690,7 +1723,7 @@ u32 sceKernelLoadModule(const char *name, u32 flags, u32 optionAddr)
 	pspFileSystem.ReadFile(handle, temp, (size_t)size);
 	u32 magic;
 	u32 error;
-	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, error);
+	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, false, error);
 	delete [] temp;
 	pspFileSystem.CloseFile(handle);
 
@@ -1740,6 +1773,68 @@ u32 sceKernelLoadModuleNpDrm(const char *name, u32 flags, u32 optionAddr)
 	return sceKernelLoadModule(name, flags, optionAddr);
 }
 
+int __KernelStartModule(SceUID moduleId, u32 argsize, u32 argAddr, u32 returnValueAddr, SceKernelSMOption *smoption, bool *needsWait) {
+	if (needsWait) {
+		*needsWait = false;
+	}
+
+	u32 error;
+	Module *module = kernelObjects.Get<Module>(moduleId, error);
+	if (!module) {
+		return error;
+	}
+
+	u32 priority = 0x20;
+	u32 stacksize = 0x40000;
+	u32 attribute = module->nm.attribute;
+	u32 entryAddr = module->nm.entry_addr;
+
+	if (module->nm.module_start_func != 0 && module->nm.module_start_func != (u32)-1) {
+		entryAddr = module->nm.module_start_func;
+		attribute = module->nm.module_start_thread_attr;
+	} else if ((entryAddr == (u32)-1) || entryAddr == module->memoryBlockAddr - 1) {
+		if (smoption) {
+			// TODO: Does sceKernelStartModule() really give an error when no entry only if you pass options?
+			attribute = smoption->attribute;
+		} else {
+			// TODO: Why are we just returning the module ID in this case?
+			WARN_LOG(SCEMODULE, "sceKernelStartModule(): module has no start or entry func");
+			module->nm.status = MODULE_STATUS_STARTED;
+			return moduleId;
+		}
+	}
+
+	if (Memory::IsValidAddress(entryAddr)) {
+		if (smoption && smoption->priority > 0) {
+			priority = smoption->priority;
+		} else if (module->nm.module_start_thread_priority > 0) {
+			priority = module->nm.module_start_thread_priority;
+		}
+
+		if (smoption && smoption->stacksize > 0) {
+			stacksize = smoption->stacksize;
+		} else if (module->nm.module_start_thread_stacksize > 0) {
+			stacksize = module->nm.module_start_thread_stacksize;
+		}
+
+		SceUID threadID = __KernelCreateThread(module->nm.name, moduleId, entryAddr, priority, stacksize, attribute, 0);
+		sceKernelStartThread(threadID, argsize, argAddr);
+		__KernelSetThreadRA(threadID, NID_MODULERETURN);
+
+		if (needsWait) {
+			*needsWait = true;
+		}
+	} else if (entryAddr == 0) {
+		INFO_LOG(SCEMODULE, "sceKernelStartModule(%d,asize=%08x,aptr=%08x,retptr=%08x): no entry address", moduleId, argsize, argAddr, returnValueAddr);
+		module->nm.status = MODULE_STATUS_STARTED;
+	} else {
+		ERROR_LOG(SCEMODULE, "sceKernelStartModule(%d,asize=%08x,aptr=%08x,retptr=%08x): invalid entry address", moduleId, argsize, argAddr, returnValueAddr);
+		return -1;
+	}
+
+	return moduleId;
+}
+
 void sceKernelStartModule(u32 moduleId, u32 argsize, u32 argAddr, u32 returnValueAddr, u32 optionAddr)
 {
 	u32 priority = 0x20;
@@ -1774,70 +1869,20 @@ void sceKernelStartModule(u32 moduleId, u32 argsize, u32 argAddr, u32 returnValu
 		INFO_LOG(SCEMODULE, "sceKernelStartModule(%d,asize=%08x,aptr=%08x,retptr=%08x,%08x)",
 		moduleId,argsize,argAddr,returnValueAddr,optionAddr);
 
-		int attribute = module->nm.attribute;
-		u32 entryAddr = module->nm.entry_addr;
+		bool needsWait;
+		int ret = __KernelStartModule(moduleId, argsize, argAddr, returnValueAddr, optionAddr ? &smoption : NULL, &needsWait);
 
-		if (module->nm.module_start_func != 0 && module->nm.module_start_func != (u32)-1)
+		if (needsWait)
 		{
-			entryAddr = module->nm.module_start_func;
-			attribute = module->nm.module_start_thread_attr;
-		}
-		else if ((entryAddr == (u32)-1) || entryAddr == module->memoryBlockAddr - 1)
-		{
-			if (optionAddr)
-			{
-				// TODO: Does sceKernelStartModule() really give an error when no entry only if you pass options?
-				attribute = smoption.attribute;
-			}
-			else
-			{
-				// TODO: Why are we just returning the module ID in this case?
-				WARN_LOG(SCEMODULE, "sceKernelStartModule(): module has no start or entry func");
-				module->nm.status = MODULE_STATUS_STARTED;
-				RETURN(moduleId);
-				return;
-			}
-		}
-
-		if (Memory::IsValidAddress(entryAddr))
-		{
-			if ((optionAddr) && smoption.priority > 0) {
-				priority = smoption.priority;
-			} else if (module->nm.module_start_thread_priority > 0) {
-				priority = module->nm.module_start_thread_priority;
-			}
-
-			if ((optionAddr) && (smoption.stacksize > 0)) {
-				stacksize = smoption.stacksize;
-			} else if (module->nm.module_start_thread_stacksize > 0) {
-				stacksize = module->nm.module_start_thread_stacksize;
-			}
-
-			SceUID threadID = __KernelCreateThread(module->nm.name, moduleId, entryAddr, priority, stacksize, attribute, 0);
-			sceKernelStartThread(threadID, argsize, argAddr);
-			__KernelSetThreadRA(threadID, NID_MODULERETURN);
 			__KernelWaitCurThread(WAITTYPE_MODULE, moduleId, 1, 0, false, "started module");
 
 			const ModuleWaitingThread mwt = {__KernelGetCurThread(), returnValueAddr};
 			module->nm.status = MODULE_STATUS_STARTING;
 			module->waitingThreads.push_back(mwt);
 		}
-		else if (entryAddr == 0)
-		{
-			INFO_LOG(SCEMODULE, "sceKernelStartModule(%d,asize=%08x,aptr=%08x,retptr=%08x,%08x): no entry address",
-			moduleId,argsize,argAddr,returnValueAddr,optionAddr);
-			module->nm.status = MODULE_STATUS_STARTED;
-		}
-		else
-		{
-			ERROR_LOG(SCEMODULE, "sceKernelStartModule(%d,asize=%08x,aptr=%08x,retptr=%08x,%08x): invalid entry address",
-			moduleId,argsize,argAddr,returnValueAddr,optionAddr);
-			RETURN(-1);
-			return;
-		}
+		RETURN(ret);
+		return;
 	}
-
-	RETURN(moduleId);
 }
 
 u32 sceKernelStopModule(u32 moduleId, u32 argSize, u32 argAddr, u32 returnValueAddr, u32 optionAddr)
@@ -2144,7 +2189,7 @@ u32 sceKernelLoadModuleByID(u32 id, u32 flags, u32 lmoptionPtr)
 	u8 *temp = new u8[size];
 	pspFileSystem.ReadFile(handle, temp, size);
 	u32 magic;
-	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, error);
+	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, false, error);
 	delete [] temp;
 
 	if (!module) {
@@ -2200,7 +2245,7 @@ SceUID sceKernelLoadModuleBufferUsbWlan(u32 size, u32 bufPtr, u32 flags, u32 lmo
 	Module *module = 0;
 	u32 magic;
 	u32 error;
-	module = __KernelLoadELFFromPtr(Memory::GetPointer(bufPtr), 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, error);
+	module = __KernelLoadELFFromPtr(Memory::GetPointer(bufPtr), 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, false, error);
 
 	if (!module) {
 		// Some games try to load strange stuff as PARAM.SFO as modules and expect it to fail.
@@ -2344,6 +2389,9 @@ const HLEFunction ModuleMgrForKernel[] =
 	{0xa1a78c58, &WrapU_CUU<ModuleMgrForKernel_a1a78c58>, "ModuleMgrForKernel_a1a78c58"}, //fix for tiger x dragon
 	{0x748CBED9, WrapU_UU<sceKernelQueryModuleInfo>, "sceKernelQueryModuleInfo" },//Bugz Homebrew
 	{0x644395e2, WrapU_UUU<sceKernelGetModuleIdList>, "sceKernelGetModuleIdList" },//Bugz Homebrew
+
+	// TODO: These probably have different behavior from kernel.
+	{0x644395e2,0,"sceKernelGetModuleIdList"},
 };
 
 void Register_ModuleMgrForUser()

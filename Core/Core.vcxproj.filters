@@ -532,6 +532,9 @@
     <ClCompile Include="HLE\sceUsbGps.cpp">
       <Filter>HLE\Libraries</Filter>
     </ClCompile>
+    <ClCompile Include="HLE\Plugins.cpp">
+      <Filter>HLE</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ELF\ElfReader.h">
@@ -983,6 +986,9 @@
     </ClInclude>
     <ClInclude Include="HLE\sceUsbGps.h">
       <Filter>HLE\Libraries</Filter>
+    </ClInclude>
+    <ClInclude Include="HLE\Plugins.h">
+      <Filter>HLE</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

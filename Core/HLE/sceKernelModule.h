@@ -34,11 +34,15 @@ struct PspModuleInfo {
 
 class PointerWrap;
 
+struct SceKernelSMOption;
+
 KernelObject *__KernelModuleObject();
 void __KernelModuleDoState(PointerWrap &p);
 void __KernelModuleShutdown();
 
 u32 __KernelGetModuleGP(SceUID module);
+SceUID __KernelLoadModule(const std::string &filename, bool kernelMode, std::string *error_string);
+int __KernelStartModule(SceUID moduleId, u32 argsize, u32 argAddr, u32 returnValueAddr, SceKernelSMOption *smoption, bool *needsWait);
 bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_string);
 void __KernelReturnFromModuleFunc();
 u32 hleKernelStopUnloadSelfModuleWithOrWithoutStatus(u32 exitCode, u32 argSize, u32 argp, u32 statusAddr, u32 optionAddr, bool WithStatus);

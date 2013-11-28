@@ -1,4 +1,4 @@
-// Copyright (c) 2012- PPSSPP Project.
+// Copyright (c) 2013- PPSSPP Project.
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -15,31 +15,8 @@
 // Official git repository and contact information can be found at
 // https://github.com/hrydgard/ppsspp and http://www.ppsspp.org/.
 
-#pragma once
-
 #include "Common/Common.h"
 
-class PointerWrap;
-
-struct PSPTimeval {
-	s32_le tv_sec;
-	s32_le tv_usec;
-};
-
-void __RtcTimeOfDay(PSPTimeval *tv);
-
-void Register_sceRtc();
-void Register_sceRtc_driver();
-
-void __RtcInit();
-void __RtcDoState(PointerWrap &p);
-
-struct ScePspDateTime {
-	s16_le year;
-	s16_le month;
-	s16_le day;
-	s16_le hour;
-	s16_le minute;
-	s16_le second;
-	u32_le microsecond;
+namespace HLEPlugins {
+	void Init();
 };
