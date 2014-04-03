@@ -1001,6 +1001,7 @@ if(ARM)
 		Core/MIPS/ARM/ArmRegCacheFPU.cpp
 		Core/MIPS/ARM/ArmRegCacheFPU.h
 		GPU/Common/VertexDecoderArm.cpp
+		GPU/GLES/DisplayListCacheArm.cpp
 		ext/disarm.cpp)
 elseif(X86)
 	set(CoreExtra ${CoreExtra}
@@ -1021,6 +1022,7 @@ elseif(X86)
 		Core/MIPS/x86/RegCacheFPU.cpp
 		Core/MIPS/x86/RegCacheFPU.h
 		GPU/Common/VertexDecoderX86.cpp
+		GPU/GLES/DisplayListCacheX86.cpp
 		ext/disarm.cpp)
 endif()
 
@@ -1331,6 +1333,8 @@ add_library(GPU OBJECT
 	GPU/Debugger/Stepping.h
 	GPU/GLES/DepalettizeShader.cpp
 	GPU/GLES/DepalettizeShader.h
+	GPU/GLES/DisplayListCache.cpp
+	GPU/GLES/DisplayListCache.h
 	GPU/GLES/GLES_GPU.cpp
 	GPU/GLES/GLES_GPU.h
 	GPU/GLES/FragmentShaderGenerator.cpp

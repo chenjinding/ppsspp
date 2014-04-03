@@ -59,6 +59,9 @@ armv7: SOURCES += $$P/GPU/Common/TextureDecoderNEON.cpp
 arm: SOURCES += $$P/GPU/Common/VertexDecoderArm.cpp
 else: SOURCES += $$P/GPU/Common/VertexDecoderX86.cpp
 
+arm: SOURCES += $$P/GPU/GLES/DisplayListCacheArm.cpp
+else:SOURCES += $$P/GPU/GLES/DisplayListCacheX86.cpp
+
 HEADERS += $$P/GPU/GLES/*.h \
 	$$P/GPU/Software/*.h \
 	$$P/GPU/Debugger/*.h \
