@@ -33,6 +33,7 @@ class FramebufferManager;
 class FramebufferManagerCommon;
 class TextureCacheCommon;
 class FragmentTestCache;
+class DisplayListCache;
 struct TransformedVertex;
 
 struct DecVtxFormat;
@@ -247,4 +248,6 @@ private:
 
 	bool fboTexBound_;
 	VertexDecoderOptions decOptions_;
+
+	friend class DisplayListCache;
 };
