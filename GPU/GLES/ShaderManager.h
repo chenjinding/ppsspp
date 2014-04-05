@@ -24,6 +24,7 @@
 #include "FragmentShaderGenerator.h"
 
 class Shader;
+class DisplayListCache;
 
 // Pre-fetched attrs and uniforms
 enum {
@@ -222,4 +223,6 @@ private:
 
 	typedef std::map<VertexShaderID, Shader *> VSCache;
 	VSCache vsCache_;
+
+	friend class DisplayListCache;
 };
