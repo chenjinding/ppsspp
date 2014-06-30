@@ -1469,6 +1469,7 @@ u32 __KernelGetModuleGP(SceUID uid)
 
 bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_string)
 {
+	const std::string safeFilename = filename;
 	SceKernelLoadExecParam param;
 
 	if (paramPtr)
@@ -1508,7 +1509,7 @@ bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_str
 
 		Replacement_Shutdown();
 		__KernelShutdown();
-		//HLE needs to be reset here
+		// HLE needs to be reset here.
 		HLEShutdown();
 		Replacement_Init();
 		HLEInit();
@@ -1518,10 +1519,10 @@ bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_str
 	__KernelModuleInit();
 	__KernelInit();
 
-	PSPFileInfo info = pspFileSystem.GetFileInfo(filename);
+	PSPFileInfo info = pspFileSystem.GetFileInfo(safeFilename);
 	if (!info.exists) {
-		ERROR_LOG(LOADER, "Failed to load executable %s - file doesn't exist", filename);
-		*error_string = StringFromFormat("Could not find executable %s", filename);
+		ERROR_LOG(LOADER, "Failed to load executable %s - file doesn't exist", safeFilename.c_str());
+		*error_string = StringFromFormat("Could not find executable %s", safeFilename.c_str());
 		if (paramPtr) {
 			if (param_argp) delete[] param_argp;
 			if (param_key) delete[] param_key;
@@ -1529,7 +1530,7 @@ bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_str
 		return false;
 	}
 
-	u32 handle = pspFileSystem.OpenFile(filename, FILEACCESS_READ);
+	u32 handle = pspFileSystem.OpenFile(safeFilename, FILEACCESS_READ);
 
 	u8 *temp = new u8[(int)info.size + 0x01000000];
 
@@ -1542,7 +1543,7 @@ bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_str
 			module->Cleanup();
 			kernelObjects.Destroy<Module>(module->GetUID());
 		}
-		ERROR_LOG(LOADER, "Failed to load module %s", filename);
+		ERROR_LOG(LOADER, "Failed to load module %s", safeFilename.c_str());
 		*error_string = "Failed to load executable: " + *error_string;
 		delete [] temp;
 		if (paramPtr) {
@@ -1578,7 +1579,7 @@ bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_str
 	if (paramPtr)
 		__KernelStartModule(module, param.args, (const char*)param_argp, &option);
 	else
-		__KernelStartModule(module, (u32)strlen(filename) + 1, filename, &option);
+		__KernelStartModule(module, (u32)safeFilename.size() + 1, safeFilename.c_str(), &option);
 
 	__KernelStartIdleThreads(module->GetUID());
 
