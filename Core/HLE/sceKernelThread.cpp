@@ -1901,6 +1901,18 @@ u32 __KernelDeleteThread(SceUID threadID, int exitStatus, const char *reason)
 	return kernelObjects.Destroy<Thread>(threadID);
 }
 
+bool __KernelTerminateModuleThreadsIterator(Thread *t, SceUID moduleID) {
+	if (t->moduleId == moduleID) {
+		WARN_LOG_REPORT(SCEKERNEL, "Terminating leftover thread %d/%s from module %d", t->GetUID(), t->GetName(), moduleID);
+		__KernelDeleteThread(t->GetUID(), SCE_KERNEL_ERROR_THREAD_TERMINATED, "module unloaded");
+	}
+	return true;
+}
+
+void __KernelTerminateModuleThreads(SceUID moduleID) {
+	kernelObjects.Iterate(&__KernelTerminateModuleThreadsIterator, moduleID);
+}
+
 // Returns NULL if the current thread is fine.
 Thread *__KernelNextThread() {
 	SceUID bestThread;
