@@ -1411,8 +1411,9 @@ SceUID __KernelLoadModule(const std::string &filename, bool kernelMode, std::str
 	pspFileSystem.ReadFile(handle, temp, (size_t)info.size);
 	pspFileSystem.CloseFile(handle);
 
+	u32 error;
 	u32 magic;
-	module = __KernelLoadELFFromPtr(temp, 0, error_string, &magic, kernelMode);
+	module = __KernelLoadELFFromPtr(temp, 0, error_string, &magic, kernelMode, error);
 	delete [] temp;
 
 	if (module == NULL)
