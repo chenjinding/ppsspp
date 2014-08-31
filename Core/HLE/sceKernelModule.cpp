@@ -247,7 +247,7 @@ public:
 	int GetIDType() const { return PPSSPP_KERNEL_TMID_Module; }
 
 	virtual void DoState(PointerWrap &p) {
-		auto s = p.Section("Module", 1, 4);
+		auto s = p.Section("Module", 1, 3);
 		if (!s)
 			return;
 
@@ -281,12 +281,6 @@ public:
 		VarSymbolImport vsi = {{0}};
 		p.Do(importedVars, vsi);
 		RebuildImpExpModuleNames();
-
-		if (s >= 4) {
-			p.Do(kernelMode);
-		} else {
-			kernelMode = false;
-		}
 
 		if (p.mode == p.MODE_READ) {
 			char moduleName[29] = {0};
@@ -380,7 +374,6 @@ public:
 	u32 memoryBlockAddr;
 	u32 memoryBlockSize;
 	bool isFake;
-	bool kernelMode;
 };
 
 KernelObject *__KernelModuleObject()
@@ -839,12 +832,11 @@ static bool IsHLEVersionedModule(const char *name) {
 	return false;
 }
 
-Module *__KernelLoadELFFromPtr(const u8 *ptr, u32 loadAddress, bool fromTop, std::string *error_string, u32 *magic, bool kernelMode, u32 &error) {
+Module *__KernelLoadELFFromPtr(const u8 *ptr, u32 loadAddress, bool fromTop, std::string *error_string, u32 *magic, u32 &error) {
 	Module *module = new Module;
 	kernelObjects.Create(module);
 	loadedModules.insert(module->GetUID());
 	memset(&module->nm, 0, sizeof(module->nm));
-	module->kernelMode = kernelMode;
 
 	bool reportedModule = false;
 	u32 devkitVersion = 0;
@@ -1389,7 +1381,7 @@ bool __KernelLoadPBP(const char *filename, std::string *error_string)
 	u8 *elfData = pbp.GetSubFile(PBP_EXECUTABLE_PSP, &elfSize);
 	u32 magic;
 	u32 error;
-	Module *module = __KernelLoadELFFromPtr(elfData, PSP_GetDefaultLoadAddress(), false, error_string, &magic, false, error);
+	Module *module = __KernelLoadELFFromPtr(elfData, PSP_GetDefaultLoadAddress(), false, error_string, &magic, error);
 	if (!module) {
 		delete [] elfData;
 		return false;
@@ -1399,7 +1391,7 @@ bool __KernelLoadPBP(const char *filename, std::string *error_string)
 	return true;
 }
 
-SceUID __KernelLoadModule(const std::string &filename, bool kernelMode, std::string *error_string) {
+SceUID __KernelLoadModule(const std::string &filename, std::string *error_string) {
 	PSPFileInfo info = pspFileSystem.GetFileInfo(filename);
 	if (!info.exists)
 		return SCE_KERNEL_ERROR_NOFILE;
@@ -1413,7 +1405,7 @@ SceUID __KernelLoadModule(const std::string &filename, bool kernelMode, std::str
 
 	u32 error;
 	u32 magic;
-	module = __KernelLoadELFFromPtr(temp, 0, error_string, &magic, kernelMode, error);
+	module = __KernelLoadELFFromPtr(temp, 0, false, error_string, &magic, error);
 	delete [] temp;
 
 	if (module == NULL)
@@ -1451,7 +1443,7 @@ Module *__KernelLoadModule(u8 *fileptr, SceKernelLMOption *options, std::string 
 		}
 
 		u32 error;
-		module = __KernelLoadELFFromPtr(temp ? temp : fileptr + offsets[5], PSP_GetDefaultLoadAddress(), false, error_string, &magic, false, error);
+		module = __KernelLoadELFFromPtr(temp ? temp : fileptr + offsets[5], PSP_GetDefaultLoadAddress(), false, error_string, &magic, error);
 
 		if (temp) {
 			delete [] temp;
@@ -1461,7 +1453,7 @@ Module *__KernelLoadModule(u8 *fileptr, SceKernelLMOption *options, std::string 
 	{
 		u32 error;
 		u32 magic = 0;
-		module = __KernelLoadELFFromPtr(fileptr, PSP_GetDefaultLoadAddress(), false, error_string, &magic, false, error);
+		module = __KernelLoadELFFromPtr(fileptr, PSP_GetDefaultLoadAddress(), false, error_string, &magic, error);
 	}
 
 	return module;
@@ -1675,7 +1667,6 @@ u32 sceKernelLoadModule(const char *name, u32 flags, u32 optionAddr)
 			loadedModules.insert(module->GetUID());
 			memset(&module->nm, 0, sizeof(module->nm));
 			module->isFake = true;
-			module->kernelMode = false;
 			return module->GetUID();
 		}
 	}
@@ -1724,7 +1715,7 @@ u32 sceKernelLoadModule(const char *name, u32 flags, u32 optionAddr)
 	pspFileSystem.ReadFile(handle, temp, (size_t)size);
 	u32 magic;
 	u32 error;
-	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, false, error);
+	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, error);
 	delete [] temp;
 	pspFileSystem.CloseFile(handle);
 
@@ -2190,7 +2181,7 @@ u32 sceKernelLoadModuleByID(u32 id, u32 flags, u32 lmoptionPtr)
 	u8 *temp = new u8[size];
 	pspFileSystem.ReadFile(handle, temp, size);
 	u32 magic;
-	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, false, error);
+	module = __KernelLoadELFFromPtr(temp, 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, error);
 	delete [] temp;
 
 	if (!module) {
@@ -2246,7 +2237,7 @@ SceUID sceKernelLoadModuleBufferUsbWlan(u32 size, u32 bufPtr, u32 flags, u32 lmo
 	Module *module = 0;
 	u32 magic;
 	u32 error;
-	module = __KernelLoadELFFromPtr(Memory::GetPointer(bufPtr), 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, false, error);
+	module = __KernelLoadELFFromPtr(Memory::GetPointer(bufPtr), 0, lmoption ? lmoption->position == 1 : false, &error_string, &magic, error);
 
 	if (!module) {
 		// Some games try to load strange stuff as PARAM.SFO as modules and expect it to fail.

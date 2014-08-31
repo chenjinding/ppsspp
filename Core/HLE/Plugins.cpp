@@ -26,7 +26,7 @@ static const std::string GAME_TXT_PATH = "ms0:/seplugins/game.txt";
 namespace HLEPlugins {
 	void Load(const std::string &filename) {
 		std::string error_string = "";
-		SceUID module = __KernelLoadModule(filename, true, &error_string);
+		SceUID module = __KernelLoadModule(filename, &error_string);
 		if (!error_string.empty()) {
 			ERROR_LOG(HLE, "Unable to load plugin %s: %s", filename.c_str(), error_string.c_str());
 			return;
