@@ -144,14 +144,9 @@ ReplaceAlphaType ReplaceAlphaWithStencil(ReplaceBlendType replaceBlend) {
 		if (nonAlphaSrcFactors[gstate.getBlendFuncA()] && nonAlphaDestFactors[gstate.getBlendFuncB()]) {
 			return REPLACE_ALPHA_YES;
 		} else {
-			// TODO
-#if 0
 			if (pD3DdeviceEx) {
 				return REPLACE_ALPHA_DUALSOURCE;
 			} else {
-#else
-			{
-#endif
 				return REPLACE_ALPHA_NO;
 			}
 		}
@@ -542,8 +537,16 @@ void GenerateFragmentShaderDX9(char *buffer) {
 		WRITE(p, "  float2 v_fogdepth: TEXCOORD1;\n");
 	}
 	WRITE(p, "};\n");
-	WRITE(p, "float4 main( PS_IN In ) : COLOR\n");
-	WRITE(p, "{\n");
+
+	if (stencilToAlpha == REPLACE_ALPHA_DUALSOURCE) {
+		WRITE(p, "struct PS_OUT {\n");
+		WRITE(p, "  float4 color0 : COLOR0;\n");
+		WRITE(p, "  float4 color1 : COLOR1;\n");
+		WRITE(p, "};\n");
+		WRITE(p, "PS_OUT main( PS_IN In ) {\n");
+	} else {
+		WRITE(p, "float4 main( PS_IN In ) : COLOR {\n");
+	}
 
 	if (gstate.isModeClear()) {
 		// Clear mode does not allow any fancy shading.
@@ -777,20 +780,23 @@ void GenerateFragmentShaderDX9(char *buffer) {
 
 	switch (stencilToAlpha) {
 	case REPLACE_ALPHA_DUALSOURCE:
-		WRITE(p, "  v.a = %s;\n", replacedAlpha.c_str());
-		// TODO: Output the second color as well using original v.a.
+		WRITE(p, "  PS_OUT Out;\n");
+		WRITE(p, "  Out.color0 = float4(v.rgb, %s);\n", replacedAlpha.c_str());
+		WRITE(p, "  Out.color1 = float4(v.a, v.a, v.a, v.a);\n");
+		WRITE(p, "  return Out;\n");
 		break;
 
 	case REPLACE_ALPHA_YES:
 		WRITE(p, "  v.a = %s;\n", replacedAlpha.c_str());
+		WRITE(p, "  return v;\n");
 		break;
 
 	case REPLACE_ALPHA_NO:
 		// Do nothing, v is already fine.
+		WRITE(p, "  return v;\n");
 		break;
 	}
 
-	WRITE(p, "  return v;\n");
 	WRITE(p, "}\n");
 }
 
