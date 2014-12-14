@@ -716,6 +716,9 @@ std::map<std::string, std::pair<std::string, int>> GetLangValuesMapping() {
 }
 
 void Config::Load(const char *iniFileName, const char *controllerIniFilename) {
+	// TODO
+	bSeparateTexThread = true;
+
 	const bool useIniFilename = iniFileName != nullptr && strlen(iniFileName) > 0;
 	iniFilename_ = FindConfigFile(useIniFilename ? iniFileName : "ppsspp.ini");
 

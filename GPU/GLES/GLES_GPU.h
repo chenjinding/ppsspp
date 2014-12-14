@@ -148,6 +148,7 @@ protected:
 	virtual void FastRunLoop(DisplayList &list);
 	virtual void ProcessEvent(GPUEvent ev);
 	virtual void FastLoadBoneMatrix(u32 target);
+	virtual bool InterpretList(DisplayList &list);
 
 private:
 	void Flush() {

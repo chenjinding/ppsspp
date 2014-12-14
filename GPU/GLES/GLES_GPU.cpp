@@ -674,6 +674,13 @@ void GLES_GPU::CopyDisplayToOutputInternal() {
 	gstate_c.textureChanged = TEXCHANGE_UPDATED;
 }
 
+bool GLES_GPU::InterpretList(DisplayList &list) {
+	textureCache_.BeginThread();
+	bool result = GPUCommon::InterpretList(list);
+	textureCache_.EndThread();
+	return result;
+}
+
 // Maybe should write this in ASM...
 void GLES_GPU::FastRunLoop(DisplayList &list) {
 	const CommandInfo *cmdInfo = cmdInfo_;

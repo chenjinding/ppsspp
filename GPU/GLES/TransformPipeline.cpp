@@ -288,6 +288,8 @@ void TransformDrawEngine::SubmitPrim(void *verts, void *inds, GEPrimitiveType pr
 		prevPrim_ = prim;
 	}
 
+	textureCache_->PrepareTexture();
+
 	SetupVertexDecoderInternal(vertType);
 
 	*bytesRead = vertexCount * dec_->VertexSize();

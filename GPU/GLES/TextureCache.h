@@ -23,10 +23,14 @@
 #include "gfx_es2/gpu_features.h"
 
 #include "Globals.h"
+#include "Common/Atomics.h"
 #include "GPU/GPUInterface.h"
 #include "GPU/GPUState.h"
 #include "GPU/GLES/TextureScaler.h"
 #include "GPU/Common/TextureCacheCommon.h"
+
+#define USE_TEXTHREAD_WANT_SPIN 1
+#define USE_TEXTHREAD_DONE_SPIN 1
 
 struct VirtualFramebuffer;
 class FramebufferManager;
@@ -147,13 +151,13 @@ public:
 		bool sClamp;
 		bool tClamp;
 
-		Status GetHashStatus() {
+		Status GetHashStatus() const {
 			return Status(status & STATUS_MASK);
 		}
 		void SetHashStatus(Status newStatus) {
 			status = (status & ~STATUS_MASK) | newStatus;
 		}
-		Status GetAlphaStatus() {
+		Status GetAlphaStatus() const {
 			return Status(status & STATUS_ALPHA_MASK);
 		}
 		void SetAlphaStatus(Status newStatus) {
@@ -167,10 +171,24 @@ public:
 				SetAlphaStatus(STATUS_ALPHA_SIMPLE);
 			}
 		}
-		bool Matches(u16 dim2, u8 format2, int maxLevel2);
+		bool Matches(u16 dim2, u8 format2, int maxLevel2) const;
 	};
 
 	void SetFramebufferSamplingParams(u16 bufferWidth, u16 bufferHeight);
+
+	void BeginThread();
+	void EndThread();
+
+	inline void PrepareTexture() {
+		if (useThread_) {
+			if (gstate_c.textureChanged != TEXCHANGE_UNCHANGED && !gstate.isModeClear() && gstate.isTextureMapEnabled()) {
+				Common::AtomicOr(threadStatus_, THREADSTAT_WANTHASH);
+#if !USE_TEXTHREAD_WANT_SPIN
+				// TODO: Notify.
+#endif
+			}
+		}
+	}
 
 private:
 	// Can't be unordered_map, we use lower_bound ... although for some reason that compiles on MSVC.
@@ -193,6 +211,10 @@ private:
 	bool AttachFramebuffer(TexCacheEntry *entry, u32 address, VirtualFramebuffer *framebuffer, u32 texaddrOffset = 0);
 	void DetachFramebuffer(TexCacheEntry *entry, u32 address, VirtualFramebuffer *framebuffer);
 	void SetTextureFramebuffer(TexCacheEntry *entry, VirtualFramebuffer *framebuffer);
+
+	void RunThread();
+	void RunThreadHash();
+	void SyncThread();
 
 	TexCacheEntry *GetEntryAt(u32 texaddr);
 
@@ -236,6 +258,18 @@ private:
 	int decimationCounter_;
 	int texelsScaledThisFrame_;
 	int timesInvalidatedAllThisFrame_;
+
+	enum {
+		THREADSTAT_IDLE = 0x00,
+		THREADSTAT_READY = 0x01,
+		THREADSTAT_WANTHASH = 0x02,
+		THREADSTAT_DONEHASH = 0x04,
+		THREADSTAT_SHUTDOWN = 0x80,
+	};
+	bool useThread_;
+	bool hasTexHash_;
+	u32 fullHash_;
+	volatile u32 threadStatus_;
 
 	FramebufferManager *framebufferManager_;
 	DepalShaderCache *depalShaderCache_;
