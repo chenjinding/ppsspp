@@ -114,7 +114,12 @@ void GenerateDepalShader300(char *buffer, GEBufferFormat pixelFormat) {
 	char *p = buffer;
 #ifdef USING_GLES2
 	WRITE(p, "#version 300 es\n");
-	WRITE(p, "precision mediump float;\n");
+	if (gl_extensions.gpuVendor == GPU_VENDOR_POWERVR) {
+		WRITE(p, "precision highp float;\n");
+	} else {
+		WRITE(p, "precision mediump float;\n");
+	}
+	WRITE(p, "precision highp int;\n");
 #else
 	WRITE(p, "#version 330\n");
 #endif
@@ -199,6 +204,13 @@ void GenerateDepalShader100(char *buffer, GEBufferFormat pixelFormat) {
 	const int shift = gstate.getClutIndexShift();
 	const int mask = gstate.getClutIndexMask();
 
+	// PowerVR needs a custom modulo function. For some reason, this has far higher precision than the builtin one.
+	const char *modulo = "mod";
+	if (gl_extensions.gpuVendor == GPU_VENDOR_POWERVR) {
+		WRITE(p, "float mymod(float a, float b) { return a - b * floor(a / b); }\n");
+		modulo = "mymod";
+	}
+
 	float index_multiplier = 1.0f;
 	// pixelformat is the format of the texture we are sampling.
 	bool formatOK = true;
@@ -211,7 +223,7 @@ void GenerateDepalShader100(char *buffer, GEBufferFormat pixelFormat) {
 			if (rgba_shift == 0 && mask == 0xFF) {
 				sprintf(lookupMethod, "index.%c", rgba[shift]);
 			} else {
-				sprintf(lookupMethod, "mod(index.%c * %f, %d.0)", rgba[shift], 255.99f / (1 << rgba_shift), mask + 1);
+				sprintf(lookupMethod, "%s(index.%c * %f, %d.0)", modulo, rgba[shift], 255.99f / (1 << rgba_shift), mask + 1);
 				index_multiplier = 1.0f / 256.0f;
 				// Format was OK if there weren't bits from another component.
 				formatOK = mask <= 255 - (1 << rgba_shift);
@@ -229,7 +241,7 @@ void GenerateDepalShader100(char *buffer, GEBufferFormat pixelFormat) {
 				index_multiplier = 15.0f / 256.0f;
 			} else {
 				// Let's divide and mod to get the right bits.  A common case is shift=0, mask=01.
-				sprintf(lookupMethod, "mod(index.%c * %f, %d.0)", rgba[shift], 15.99f / (1 << rgba_shift), mask + 1);
+				sprintf(lookupMethod, "%s(index.%c * %f, %d.0)", modulo, rgba[shift], 15.99f / (1 << rgba_shift), mask + 1);
 				index_multiplier = 1.0f / 256.0f;
 				formatOK = mask <= 15 - (1 << rgba_shift);
 			}
@@ -249,7 +261,7 @@ void GenerateDepalShader100(char *buffer, GEBufferFormat pixelFormat) {
 			} else {
 				// We just need to divide the right component by the right value, and then mod against the mask.
 				// A common case is shift=1, mask=0f.
-				sprintf(lookupMethod, "mod(index.%c * %f, %d.0)", rgba[shift], ((float)multipliers[shift] + 0.99f) / (1 << rgba_shift), mask + 1);
+				sprintf(lookupMethod, "%s(index.%c * %f, %d.0)", modulo, rgba[shift], ((float)multipliers[shift] + 0.99f) / (1 << rgba_shift), mask + 1);
 				index_multiplier = 1.0f / 256.0f;
 				formatOK = mask <= multipliers[shift] - (1 << rgba_shift);
 			}
@@ -269,7 +281,7 @@ void GenerateDepalShader100(char *buffer, GEBufferFormat pixelFormat) {
 				index_multiplier = 1.0f / 256.0f;
 			} else {
 				// A isn't possible here.
-				sprintf(lookupMethod, "mod(index.%c * %f, %d.0)", rgba[shift], 31.99f / (1 << rgba_shift), mask + 1);
+				sprintf(lookupMethod, "%s(index.%c * %f, %d.0)", modulo, rgba[shift], 31.99f / (1 << rgba_shift), mask + 1);
 				index_multiplier = 1.0f / 256.0f;
 				formatOK = mask <= 31 - (1 << rgba_shift);
 			}
@@ -300,7 +312,11 @@ void GenerateDepalShader100(char *buffer, GEBufferFormat pixelFormat) {
 
 #ifdef USING_GLES2
 	WRITE(p, "#version 100\n");
-	WRITE(p, "precision mediump float;\n");
+	if (gl_extensions.gpuVendor == GPU_VENDOR_POWERVR) {
+		WRITE(p, "precision highp float;\n");
+	} else {
+		WRITE(p, "precision mediump float;\n");
+	}
 #else
 	WRITE(p, "#version 110\n");
 #endif
