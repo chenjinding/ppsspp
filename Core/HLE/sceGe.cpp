@@ -177,6 +177,7 @@ public:
 		// In other words, not before another interrupt finishes.
 		if (dl->signal != PSP_GE_SIGNAL_HANDLER_PAUSE && cmd == GE_CMD_FINISH) {
 			dl->state = PSP_GE_DL_STATE_COMPLETED;
+			NOTICE_LOG(HLE, "[%d] Changed state to COMPLETED (S)", dl->id);
 		}
 
 		SubIntrHandler* handler = get(subintr);
@@ -197,6 +198,7 @@ public:
 			if (sceKernelGetCompiledSdkVersion() <= 0x02000010) {
 				if (dl->state != PSP_GE_DL_STATE_NONE && dl->state != PSP_GE_DL_STATE_COMPLETED) {
 					dl->state = PSP_GE_DL_STATE_QUEUED;
+					NOTICE_LOG(HLE, "[%d] Changed state to QUEUED (T)", dl->id);
 				}
 			}
 		}
@@ -237,6 +239,7 @@ public:
 
 				if (dl->state != PSP_GE_DL_STATE_NONE && dl->state != PSP_GE_DL_STATE_COMPLETED) {
 					dl->state = PSP_GE_DL_STATE_QUEUED;
+					NOTICE_LOG(HLE, "[%d] Changed state to QUEUED (U)", dl->id);
 				}
 			}
 			break;

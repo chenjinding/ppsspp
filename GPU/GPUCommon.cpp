@@ -49,8 +49,10 @@ void GPUCommon::PopDLQueue() {
 		if(!dlQueue.empty()) {
 			bool running = currentList->state == PSP_GE_DL_STATE_RUNNING;
 			currentList = &dls[dlQueue.front()];
-			if (running)
+			if (running) {
 				currentList->state = PSP_GE_DL_STATE_RUNNING;
+				NOTICE_LOG(HLE, "[%d] Changed state to RUNNING (A)", currentList->id);
+			}
 		} else {
 			currentList = NULL;
 		}
@@ -224,6 +226,11 @@ u32 GPUCommon::EnqueueList(u32 listpc, u32 stall, int subIntrBase, PSPPointer<Ps
 					return 0x80000021;
 				} else if (stackAddr != 0 && dls[i].stackAddr == stackAddr && !dls[i].pendingInterrupt) {
 					ERROR_LOG(G3D, "sceGeListEnqueue: can't enqueue, stack address %08X already used", stackAddr);
+
+					for (int j = 0; j < DisplayListMaxCount; ++j) {
+						WARN_LOG(G3D, " * List #%d state: %d, pc: %08x (from %08x), pending int: %d, started: %d, stackAddr: %08x", dls[j].id, dls[j].state, dls[j].pc, dls[j].startpc, dls[j].pendingInterrupt, dls[j].started, dls[j].stackAddr);
+					}
+
 					return 0x80000021;
 				}
 			}
@@ -282,17 +289,21 @@ u32 GPUCommon::EnqueueList(u32 listpc, u32 stall, int subIntrBase, PSPPointer<Ps
 			if (currentList->state != PSP_GE_DL_STATE_PAUSED)
 				return SCE_KERNEL_ERROR_INVALID_VALUE;
 			currentList->state = PSP_GE_DL_STATE_QUEUED;
+			NOTICE_LOG(HLE, "[%d] Changed state to QUEUED (B)", currentList->id);
 		}
 
 		dl.state = PSP_GE_DL_STATE_PAUSED;
+		NOTICE_LOG(HLE, "[%d] Changed state to PAUSED (C)", dl.id);
 
 		currentList = &dl;
 		dlQueue.push_front(id);
 	} else if (currentList) {
 		dl.state = PSP_GE_DL_STATE_QUEUED;
+		NOTICE_LOG(HLE, "[%d] Changed state to QUEUED (D)", dl.id);
 		dlQueue.push_back(id);
 	} else {
 		dl.state = PSP_GE_DL_STATE_RUNNING;
+		NOTICE_LOG(HLE, "[%d] Changed state to RUNNING (E)", dl.id);
 		currentList = &dl;
 		dlQueue.push_front(id);
 
@@ -359,6 +370,7 @@ u32 GPUCommon::Continue() {
 			// currentList->signal == PSP_GE_SIGNAL_HANDLER_PAUSE, but it doesn't reproduce.
 
 			currentList->state = PSP_GE_DL_STATE_RUNNING;
+			NOTICE_LOG(HLE, "[%d] Changed state to RUNNING (F)", currentList->id);
 			currentList->signal = PSP_GE_SIGNAL_NONE;
 
 			// TODO Restore context of DL is necessary
@@ -367,8 +379,10 @@ u32 GPUCommon::Continue() {
 			// We have a list now, so it's not complete.
 			drawCompleteTicks = (u64)-1;
 		}
-		else
+		else {
 			currentList->state = PSP_GE_DL_STATE_QUEUED;
+			NOTICE_LOG(HLE, "[%d] Changed state to QUEUED (G)", currentList->id);
+		}
 	}
 	else if (currentList->state == PSP_GE_DL_STATE_RUNNING)
 	{
@@ -435,6 +449,7 @@ u32 GPUCommon::Break(int mode) {
 	if (currentList->state == PSP_GE_DL_STATE_QUEUED)
 	{
 		currentList->state = PSP_GE_DL_STATE_PAUSED;
+		NOTICE_LOG(HLE, "[%d] Changed state to PAUSED (H)", currentList->id);
 		return currentList->id;
 	}
 
@@ -447,6 +462,7 @@ u32 GPUCommon::Break(int mode) {
 
 	currentList->interrupted = true;
 	currentList->state = PSP_GE_DL_STATE_PAUSED;
+	NOTICE_LOG(HLE, "[%d] Changed state to PAUSED (I)", currentList->id);
 	currentList->signal = PSP_GE_SIGNAL_HANDLER_SUSPEND;
 	isbreak = true;
 
@@ -500,6 +516,7 @@ bool GPUCommon::InterpretList(DisplayList &list) {
 	cyclesExecuted += 60;
 	downcount = list.stall == 0 ? 0x0FFFFFFF : (list.stall - list.pc) / 4;
 	list.state = PSP_GE_DL_STATE_RUNNING;
+	NOTICE_LOG(HLE, "[%d] Changed state to RUNNING (J)", list.id);
 	list.interrupted = false;
 
 	gpuState = list.pc == list.stall ? GPUSTATE_STALL : GPUSTATE_RUNNING;
@@ -823,8 +840,10 @@ void GPUCommon::Execute_End(u32 op, u32 diff) {
 			case PSP_GE_SIGNAL_HANDLER_SUSPEND:
 				// Suspend the list, and call the signal handler.  When it's done, resume.
 				// Before sdkver 0x02000010, listsync should return paused.
-				if (sceKernelGetCompiledSdkVersion() <= 0x02000010)
+				if (sceKernelGetCompiledSdkVersion() <= 0x02000010) {
 					currentList->state = PSP_GE_DL_STATE_PAUSED;
+					NOTICE_LOG(HLE, "[%d] Changed state to PAUSED (K)", currentList->id);
+				}
 				currentList->signal = behaviour;
 				DEBUG_LOG(G3D, "Signal with wait. signal/end: %04x %04x", signal, enddata);
 				break;
@@ -913,6 +932,7 @@ void GPUCommon::Execute_End(u32 op, u32 diff) {
 			if (currentList->interruptsEnabled && trigger) {
 				if (__GeTriggerInterrupt(currentList->id, currentList->pc, startingTicks + cyclesExecuted)) {
 					currentList->pendingInterrupt = true;
+					NOTICE_LOG(HLE, "[%d] Pending interrupt set (L)", currentList->id);
 					UpdateState(GPUSTATE_INTERRUPT);
 				}
 			}
@@ -922,9 +942,11 @@ void GPUCommon::Execute_End(u32 op, u32 diff) {
 		switch (currentList->signal) {
 		case PSP_GE_SIGNAL_HANDLER_PAUSE:
 			currentList->state = PSP_GE_DL_STATE_PAUSED;
+			NOTICE_LOG(HLE, "[%d] Changed state to PAUSED (M)", currentList->id);
 			if (currentList->interruptsEnabled) {
 				if (__GeTriggerInterrupt(currentList->id, currentList->pc, startingTicks + cyclesExecuted)) {
 					currentList->pendingInterrupt = true;
+					NOTICE_LOG(HLE, "[%d] Pending interrupt set (N)", currentList->id);
 					UpdateState(GPUSTATE_INTERRUPT);
 				}
 			}
@@ -940,8 +962,10 @@ void GPUCommon::Execute_End(u32 op, u32 diff) {
 			UpdateState(GPUSTATE_DONE);
 			if (currentList->interruptsEnabled && __GeTriggerInterrupt(currentList->id, currentList->pc, startingTicks + cyclesExecuted)) {
 				currentList->pendingInterrupt = true;
+				NOTICE_LOG(HLE, "[%d] Pending interrupt set (O)", currentList->id);
 			} else {
 				currentList->state = PSP_GE_DL_STATE_COMPLETED;
+				NOTICE_LOG(HLE, "[%d] Changed state to COMPLETED (P)", currentList->id);
 				currentList->waitTicks = startingTicks + cyclesExecuted;
 				busyTicks = std::max(busyTicks, currentList->waitTicks);
 				__GeTriggerSync(GPU_SYNC_LIST, currentList->id, currentList->waitTicks);
@@ -1112,6 +1136,7 @@ void GPUCommon::InterruptEnd(int listid) {
 
 	DisplayList &dl = dls[listid];
 	dl.pendingInterrupt = false;
+	NOTICE_LOG(HLE, "[%d] Pending interrupt CLEARED (Q)", dl.id);
 	// TODO: Unless the signal handler could change it?
 	if (dl.state == PSP_GE_DL_STATE_COMPLETED || dl.state == PSP_GE_DL_STATE_NONE) {
 		if (dl.started && dl.context.IsValid()) {
@@ -1187,6 +1212,7 @@ void GPUCommon::ResetListState(int listID, DisplayListState state) {
 
 	easy_guard guard(listLock);
 	dls[listID].state = state;
+	NOTICE_LOG(HLE, "[%d] Changed state to DYN:%d (R)", dls[listID].id, state);
 }
 
 GPUDebugOp GPUCommon::DissassembleOp(u32 pc, u32 op) {
